@@ -581,7 +581,6 @@ async function fetchZoneStats(apiToken, zoneId, days) {
               cachedBytes
               pageViews
               threats
-              clientHTTPVersionMap { clientHTTPProtocol edgeResponseBytes requests }
               responseStatusMap { edgeResponseStatus requests }
             }
           }
