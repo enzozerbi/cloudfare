@@ -1,0 +1,4 @@
+name = "cloudfare"
+main = "worker.js"
+compatibility_date = "2026-05-12"
+workers_dev = true
