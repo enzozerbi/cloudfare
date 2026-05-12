@@ -447,7 +447,18 @@ function renderApp() {
       </div>
     </div>
 
-    <div class="section-label">Tutti i domini</div>
+    <div class="section-label">Status code</div>
+    <div class="two-col chart-section">
+      <div class="chart-container">
+        <div class="chart-title">Distribuzione per codice</div>
+        <canvas id="status-chart"></canvas>
+      </div>
+      <div class="chart-container" style="padding:0;overflow:hidden">
+        <table class="data-table"><thead><tr><th>Codice</th><th>Richieste</th><th>%</th><th>Categoria</th></tr></thead><tbody id="status-tbody"></tbody></table>
+      </div>
+    </div>
+
+        <div class="section-label">Tutti i domini</div>
     <div class="chart-container table-section">
       <table class="data-table">
         <thead>
@@ -538,6 +549,30 @@ function renderApp() {
     },
     options: { ...baseOpts, scales: { ...baseOpts.scales, y: { ...baseOpts.scales.y, min: 0, max: 100, ticks: { ...baseOpts.scales.y.ticks, callback: v => v + '%' } } } }
   });
+
+  const statusData = zone.statusBreakdown || [];
+  const top10 = statusData.slice(0, 10);
+  const statusColors = top10.map(s => s.code >= 500 ? 'rgba(248,113,113,0.8)' : s.code >= 400 ? 'rgba(251,191,36,0.8)' : s.code >= 300 ? 'rgba(77,166,255,0.8)' : 'rgba(74,222,128,0.8)');
+
+  if (document.getElementById('status-chart')) {
+    charts.status = new Chart(document.getElementById('status-chart'), {
+      type: 'bar',
+      data: { labels: top10.map(s => String(s.code)), datasets: [{ data: top10.map(s => s.count), backgroundColor: statusColors, borderRadius: 4 }] },
+      options: { responsive: true, maintainAspectRatio: true, aspectRatio: 1.8, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { grid: { color: '#1e1e1e' }, ticks: { callback: v => fmt(v) } }, y: { grid: { display: false } } } }
+    });
+  }
+
+  const statusTbody = document.getElementById('status-tbody');
+  if (statusTbody) {
+    const catLabel = code => code >= 500 ? '<span class="badge badge-red">5xx</span>' : code >= 400 ? '<span class="badge badge-yellow">4xx</span>' : code >= 300 ? '<span class="badge badge-blue">3xx</span>' : '<span class="badge badge-green">2xx</span>';
+    statusData.slice(0, 15).forEach(s => {
+      const pct = totals.requests > 0 ? (s.count / totals.requests * 100).toFixed(1) : '0.0';
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td style="font-weight:500">' + s.code + '</td><td>' + fmt(s.count) + '</td><td>' + pct + '%</td><td>' + catLabel(s.code) + '</td>';
+      statusTbody.appendChild(tr);
+    });
+  }
+
 }
 
 loadData();
@@ -607,6 +642,7 @@ async function fetchZoneStats(apiToken, zoneId, days) {
   const groups = json.data?.viewer?.zones?.[0]?.httpRequests1dGroups || [];
 
   let totals = { requests: 0, bytes: 0, cachedRequests: 0, r4xx: 0, r5xx: 0 };
+  const statusAgg = {};
   const daily = groups.map(g => {
     const r4xx = g.sum.responseStatusMap
       .filter(s => s.edgeResponseStatus >= 400 && s.edgeResponseStatus < 500)
@@ -621,6 +657,8 @@ async function fetchZoneStats(apiToken, zoneId, days) {
     totals.r4xx += r4xx;
     totals.r5xx += r5xx;
 
+    g.sum.responseStatusMap.forEach(s => { statusAgg[s.edgeResponseStatus] = (statusAgg[s.edgeResponseStatus] || 0) + s.requests; });
+
     return {
       date: g.date.date,
       requests: g.sum.requests,
@@ -631,7 +669,8 @@ async function fetchZoneStats(apiToken, zoneId, days) {
     };
   });
 
-  return { totals, daily };
+  const statusBreakdown = Object.entries(statusAgg).map(([code, count]) => ({ code: parseInt(code), count })).sort((a, b) => b.count - a.count);
+  return { totals, daily, statusBreakdown };
 }
 
 export default {
